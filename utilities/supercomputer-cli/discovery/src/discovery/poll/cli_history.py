@@ -85,8 +85,14 @@ def _format_duration(td: timedelta, *, in_progress: bool = False) -> str:
     """Format ``td`` as ``2h 30m`` / ``45s`` / ``3d 5h``.
 
     Mirrors :func:`discovery.poll.cli_status._format_duration` semantics
-    so the runtime values line up between ``discovery job list`` and
-    ``discovery job history --status``.
+    so the elapsed-time values line up between ``discovery job list``
+    and ``discovery job history --status``.
+
+    Note: callers feed in ``completed_at - created_at`` from the
+    Discovery API, which is *elapsed wall-clock from submit to
+    terminal* — it includes queue/scheduling time, not just
+    execution. The API does not expose a separate execution-start
+    timestamp.
     """
     total = int(td.total_seconds())
     if total < 0:
@@ -113,10 +119,16 @@ def _format_duration(td: timedelta, *, in_progress: bool = False) -> str:
 # renderer doesn't have to know about the API shape.
 @dataclass
 class _StatusSnapshot:
-    """Live status + runtime for one entry, or an explanatory error tag."""
+    """Live status + elapsed-time snapshot for one entry.
+
+    ``elapsed`` is wall-clock from submission to terminal state (or to
+    "now" for in-progress jobs). The Discovery API has no
+    execution-start field, so this value includes queue time. Empty
+    string means "unknown / not yet started".
+    """
 
     status: str = ""
-    runtime: str = ""
+    elapsed: str = ""
     style: str = "white"
 
 
@@ -144,12 +156,12 @@ def _snapshot_from_response(resp) -> _StatusSnapshot:
     raw_status = (resp.status or "").strip() or "?"
     style = _STATUS_STYLES.get(raw_status.lower(), "white")
     result = resp.result
-    runtime = ""
+    elapsed = ""
     if result and result.created_at:
         end = result.completed_at or datetime.now(tz=timezone.utc)
         in_progress = result.completed_at is None
-        runtime = _format_duration(end - result.created_at, in_progress=in_progress)
-    return _StatusSnapshot(status=raw_status, runtime=runtime, style=style)
+        elapsed = _format_duration(end - result.created_at, in_progress=in_progress)
+    return _StatusSnapshot(status=raw_status, elapsed=elapsed, style=style)
 
 
 def _classify_status_error(op_id: str, exc: httpx.HTTPStatusError) -> _StatusSnapshot:
@@ -209,7 +221,9 @@ def _render_table(
     """Render entries as a Rich table (newest first).
 
     When ``status_map`` is supplied, two extra columns (Status,
-    Runtime) are appended with live values fetched from the API.
+    Elapsed) are appended with live values fetched from the API.
+    "Elapsed" is wall-clock from submit to terminal — it includes
+    queue time, not just execution.
     """
     table = Table(
         show_header=True,
@@ -221,7 +235,10 @@ def _render_table(
     table.add_column("Submitted", no_wrap=True, width=18)
     if status_map is not None:
         table.add_column("Status", no_wrap=True, width=10)
-        table.add_column("Runtime", no_wrap=True, width=9)
+        # "Elapsed" rather than "Runtime" because the Discovery API
+        # does not expose a separate execution-start timestamp; this
+        # value includes queue/scheduling time.
+        table.add_column("Elapsed", no_wrap=True, width=9)
     table.add_column("Mode", no_wrap=True, width=7)
     table.add_column("Project", no_wrap=True, max_width=24, overflow="ellipsis")
     table.add_column("Host", no_wrap=True, max_width=18, overflow="ellipsis")
@@ -240,7 +257,7 @@ def _render_table(
                 status="?", style=_STATUS_STYLES["?"]
             )
             cells.append(f"[{snap.style}]{snap.status}[/{snap.style}]")
-            cells.append(snap.runtime or "—")
+            cells.append(snap.elapsed or "—")
         cells.extend(
             [
                 f"[{mode_style}]{entry.mode}[/{mode_style}]",
@@ -290,10 +307,12 @@ def history_command(
         "--status",
         "-s",
         help=(
-            "Fetch each entry's current status and computed runtime "
-            "from the Discovery service. Adds two columns to the "
-            "output; one HTTP call per entry (parallelized). Without "
-            "this flag the command stays fully offline."
+            "Fetch each entry's current status and elapsed time from "
+            "the Discovery service. 'Elapsed' is wall-clock from "
+            "submit to terminal (includes queue time — the API does "
+            "not expose a separate execution-start timestamp). Adds "
+            "two columns; one HTTP call per entry, parallelized. "
+            "Without this flag the command stays fully offline."
         ),
     ),
     status_workers: int = typer.Option(

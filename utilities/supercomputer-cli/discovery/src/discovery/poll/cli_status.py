@@ -45,6 +45,14 @@ def _format_duration(td: timedelta, in_progress: bool = False) -> str:
 
     Uses the two most significant non-zero units for readability.
     Appends '+' suffix for in-progress jobs to indicate the duration is still growing.
+
+    Note: the values fed into this function in the listing/status
+    commands are ``completed_at - created_at`` from the Discovery API.
+    ``created_at`` is the operation's *submission* time, so the
+    resulting duration is *elapsed wall-clock from submit to terminal*
+    — it includes both queue/scheduling time and actual execution
+    time. The API does not expose a separate execution-start
+    timestamp, so we can't split the two.
     """
     total_seconds = int(td.total_seconds())
     if total_seconds < 0:
@@ -530,7 +538,11 @@ async def _paginated_list(
         table.add_column("Operation ID", style="cyan", no_wrap=True)
         table.add_column("Submitted", style="magenta")
         table.add_column("Completed", style="magenta")
-        table.add_column("Runtime", style="bright_cyan")
+        # "Elapsed" rather than "Runtime" because this value is
+        # completed_at - created_at where created_at is the submit
+        # time; it includes queue/scheduling time. See
+        # :func:`_format_duration`.
+        table.add_column("Elapsed", style="bright_cyan")
         table.add_column("Owner", style="bright_black")
         table.add_column("Pool", style="yellow")
         table.add_column("Status", style="green")
@@ -622,7 +634,8 @@ def status_cmd(
             table = Table(title=f"Operation: {result.id}", show_header=True)
             table.add_column("Created (Local)", style="magenta")
             table.add_column("Completed (Local)", style="magenta")
-            table.add_column("Runtime", style="bright_cyan")
+            # See _list_helper for why this is labeled "Elapsed".
+            table.add_column("Elapsed", style="bright_cyan")
             table.add_column("Status", style="green")
             table.add_column("Runtime Details", style="cyan")
 

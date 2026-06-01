@@ -244,6 +244,9 @@ discovery job history --all-workspaces --this-host
 # Add live status + computed runtime (one parallel API call per entry)
 discovery job history --status
 discovery job history --status --since 24h
+# Note: the "Elapsed" column is wall-clock from submit to terminal
+# (includes queue/scheduling time). The Discovery API does not expose
+# a separate execution-start timestamp.
 
 # Server-side listings default to jobs from this machine — pass --all
 # to widen the view (or --user X on `list` for a specific submitter)
