@@ -50,41 +50,24 @@ This installs the CLI in an isolated environment and makes it available system-w
 
 ### 3. Upgrade the Discovery CLI
 
-The CLI checks for new releases once per day in the background and prints a
-one-line reminder when a newer version of the `utilities/supercomputer-cli/`
-subdirectory has landed on `main`. Apply an update in one of two ways:
-
 ```bash
-discovery update            # interactive: check + prompt + install via uv
+discovery update            # check + interactive install
 discovery update --check    # check only
-discovery update -y         # install without confirmation
+discovery update -y         # install without prompting
+uv tool upgrade discovery   # equivalent direct command
 ```
 
-You can also upgrade directly:
+The CLI also runs a once-per-day background check and prints a one-line
+reminder at exit when a newer release lands on `main`. The check works
+fully anonymously against the public repo — no token, no `gh auth login`,
+no setup required. Environment toggles:
 
-```bash
-uv tool upgrade discovery
-```
-
-The automatic background check can be disabled either per-invocation
-(`DISCOVERY_NO_UPDATE_CHECK=1`) or persistently:
-
-```bash
-discovery update --disable   # turn off background checks
-discovery update --enable    # turn them back on
-```
-
-> **Authentication is optional.** The update check works fully
-> unauthenticated against a public repo, but GitHub limits anonymous
-> traffic to 60 requests/hour per IP. To raise the limit to 5000/hour
-> the checker opportunistically uses `DISCOVERY_GITHUB_TOKEN`,
-> `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token` (when the `gh` CLI is
-> installed and authenticated) — no setup required for most developers.
-
-> **Following a non-default branch.** Set `DISCOVERY_UPDATE_REF=<ref>` to
-> compare against a branch, tag, or commit other than `main`. Pair with
-> `DISCOVERY_UPDATE_REPO=owner/name` for fork-based or RC-channel
-> testing.
+| Variable | Effect |
+|---|---|
+| `DISCOVERY_NO_UPDATE_CHECK=1` | Skip the background check for this invocation (CI-friendly). Use `discovery update --disable` / `--enable` to persist. |
+| `DISCOVERY_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN` | Optional. Raises the GitHub API rate limit from 60/hr (anonymous, shared per public IP) to 5 000/hr. The checker also falls back to `gh auth token` if installed. |
+| `DISCOVERY_UPDATE_REF=<ref>` | Follow a non-default branch / tag / SHA (e.g. `release/rc-1`). |
+| `DISCOVERY_UPDATE_REPO=<owner/name>` | Compare against a fork. |
 
 ### 4. Verify your installation
 
